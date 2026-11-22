@@ -1,0 +1,3 @@
+# Coloque aqui, um por linha, o numero (ID) dos presentes que valem a FOTO GIGANTE (muro todo).
+# Linhas com # na frente sao ignoradas.
+5487

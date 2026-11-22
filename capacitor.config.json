@@ -1,0 +1,6 @@
+{
+  "appId": "com.pintor.aovivo",
+  "appName": "Pintor ao Vivo",
+  "webDir": "www",
+  "android": { "allowMixedContent": true }
+}
