@@ -15,7 +15,7 @@ canvas{width:100%;max-width:540px;height:auto;border-radius:12px;display:block}
 button{padding:10px 14px;border:0;border-radius:8px;background:#c0392b;color:#fff;font-size:15px}
 </style></head><body>
 <canvas id="c" width="1080" height="1920"></canvas>
-<button id="snd" onclick="som()">🔊 Ligar som</button>
+<button id="snd" onclick="som()">🔊 Ligar efeitos</button>
 <div class="ctl" id="ctl">
 <label>Teste: escreva um nome, escolha uma foto (opcional) e clique em “Comentar”.</label>
 <input type="text" id="n" placeholder="Nome do espectador">
@@ -267,10 +267,9 @@ function draw(ts){
  pxBaloes(ts,dt);
  murais.forEach(mural);
  pxCorredores(ts,dt);
- legenda(null,'💬 Comente = pinte sua foto',44,'#1f3a52');
+ legenda(null,'💬 Comente para pintar sua foto',44,'#1f3a52');
  legenda(IMG_ROSA,'= foto lendária',86,'#7b1fa2');
  legenda(IMG_CORACAO,'= foto no muro todo',128,'#c2185b');
- painelFila();
  const nv=cur?cur.nivel:1;
  if(nv>=2){ctx.save();ctx.translate(W/2,164);const sc=1+Math.sin(ts/150)*.05;ctx.scale(sc,sc);ctx.font='bold 26px Georgia';ctx.textAlign='center';ctx.lineWidth=5;ctx.strokeStyle='#fff';ctx.fillStyle=nv===4?'#7b1fa2':'#b8860b';ctx.strokeText(NIV[nv],0,0);ctx.fillText(NIV[nv],0,0);ctx.restore()}
  const fim=cur&&pe>=cur.dur,dancing=!cur||fim||(cur&&pe<0);
@@ -300,7 +299,7 @@ function pxHead(name,img,nv){
  return c}
 // --- corredores ---
 const pxRun={};
-function pxSlot(i){const row=i%2,col=Math.floor(i/2);return {x:290-col*27-(row?11:0),y:row?918:938,s:row?0.88:1}}
+function pxSlot(i){const row=i%2,col=Math.floor(i/2);return {x:288-col*28-(row?12:0),y:row?920:940,s:row?1.06:1.2}}
 function pxFigura(r,ts,run,vivo){
  const s=r.s,x=r.x,fy=r.y,k=run?Math.sin(r.ph):0,hop=run?Math.abs(Math.sin(r.ph))*5*s:(vivo?Math.abs(Math.sin(ts/260+r.o))*6*s:0);
  const hip=fy-22*s-hop,sh=hip-17*s,hd=sh-17*s,sp=run?11*s*k:6*s;
@@ -324,27 +323,42 @@ function pxCorredores(ts,dt){
  const arr=Object.values(pxRun).sort(function(a,b){return a.y-b.y});
  arr.forEach(function(r){pxFigura(r,ts,r.run,vel<25)})}
 // --- baloes ---
-const pxBal=[],PX_SL=[[262,176],[318,168],[374,180],[430,168],[486,176],[290,250],[346,242],[402,254],[458,244],[514,252]];
+const pxBal=[],PX_SL=[[54,178],[162,170],[270,178],[378,170],[486,178],[108,262],[216,254],[324,262],[432,254],[500,300]];
 function pxSolta(it){
  const r=pxRun[it.id];const x=r?r.x:280,y=r?r.y-50:860;if(r)delete pxRun[it.id];
  const vivos=pxBal.filter(function(b){return !b.sai});
- if(vivos.length>=10){vivos[0].sai=true}
+ if(vivos.length>=10){(vivos.find(function(b){return b.it.nivel<4})||vivos[0]).sai=true}
  const usados={};pxBal.forEach(function(b){if(!b.sai)usados[b.sl]=1});
  let sl=0;for(let i=0;i<10;i++)if(!usados[i]){sl=i;break}
- pxBal.push({it:it,x:x,y:y,sl:sl,k:Math.random()*6,a:1,sai:false,col:it.nivel>=4?'#f2c230':'hsl('+hue(it.name)+',70%,58%)'});
+ pxBal.push({it:it,x:x,y:y,sl:sl,k:Math.random()*6,a:1,sai:false,nv:it.nivel,col:'hsl('+hue(it.name)+',70%,58%)'});
  pxFalar(it.name.slice(0,16)+' virou balão no céu! 🎈',3500,1)}
+function pxBalForma(b,x,y,ts){
+ const nv=b.nv,sc=nv===5?1.65:nv===4?1.22:1;
+ ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);
+ ctx.strokeStyle='rgba(60,50,40,.7)';ctx.lineWidth=1.5/sc;ctx.beginPath();ctx.moveTo(0,25);ctx.quadraticCurveTo(Math.sin(ts/500+b.k)*7,42,Math.sin(ts/600+b.k)*4,62);ctx.stroke();
+ let cor=b.col;
+ if(nv>=4){const g=ctx.createRadialGradient(-8,-10,3,0,0,32);if(nv===5){g.addColorStop(0,'#ffd0e4');g.addColorStop(.5,'#ff4f93');g.addColorStop(1,'#b8104f')}else{g.addColorStop(0,'#fff6c2');g.addColorStop(.5,'#f6c93a');g.addColorStop(1,'#b8860b')}cor=g}
+ ctx.fillStyle=cor;ctx.beginPath();
+ if(nv===5){ctx.moveTo(0,28);ctx.bezierCurveTo(-34,6,-30,-30,-12,-28);ctx.bezierCurveTo(-5,-27,0,-21,0,-16);ctx.bezierCurveTo(0,-21,5,-27,12,-28);ctx.bezierCurveTo(30,-30,34,6,0,28)}
+ else ctx.ellipse(0,0,22,26,0,0,7);
+ ctx.fill();
+ if(nv>=4){ctx.lineWidth=2.5/sc;ctx.strokeStyle=nv===5?'#ffe680':'#fff3b0';ctx.stroke()}
+ ctx.fillStyle=nv===5?'#ffd84d':cor;if(nv<4){ctx.beginPath();ctx.moveTo(-5,30);ctx.lineTo(5,30);ctx.lineTo(0,23);ctx.closePath();ctx.fill()}
+ else{ctx.fillStyle='#ffd84d';ctx.beginPath();ctx.moveTo(0,nv===5?28:26);ctx.lineTo(-9,nv===5?38:35);ctx.lineTo(-2,nv===5?30:28);ctx.lineTo(2,nv===5?30:28);ctx.lineTo(9,nv===5?38:35);ctx.closePath();ctx.fill()}
+ const hy=nv===5?-4:-2,hs=nv>=4?36:34;ctx.drawImage(b.it.head,-hs/2,hy-hs/2,hs,hs);
+ ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.ellipse(-13,-15,3.5,7,-0.5,0,7);ctx.fill();
+ ctx.restore();
+ if(nv>=4){ // brilhinhos girando em volta
+  const n=nv===5?6:4,R=(nv===5?56:38);
+  for(let i=0;i<n;i++){const a=ts/700+b.k+i*6.283/n,px=x+Math.cos(a)*R,py=y+Math.sin(a)*R*0.9,tw=0.5+0.5*Math.sin(ts/180+i*2);
+   ctx.fillStyle='rgba(255,240,150,'+(0.4+0.6*tw)+')';ctx.save();ctx.translate(px,py);ctx.rotate(a);const z=3+tw*3;ctx.beginPath();ctx.moveTo(0,-z*1.6);ctx.lineTo(z*.5,-z*.5);ctx.lineTo(z*1.6,0);ctx.lineTo(z*.5,z*.5);ctx.lineTo(0,z*1.6);ctx.lineTo(-z*.5,z*.5);ctx.lineTo(-z*1.6,0);ctx.lineTo(-z*.5,-z*.5);ctx.closePath();ctx.fill();ctx.restore()}}}
 function pxBaloes(ts,dt){
  for(let i=pxBal.length-1;i>=0;i--){const b=pxBal[i],sl=PX_SL[b.sl];
   if(b.sai){b.y-=dt*0.07;b.a-=dt/2200;if(b.a<=0){pxBal.splice(i,1);continue}}
-  else{b.x+=(sl[0]-b.x)*Math.min(1,dt/650);b.y+=(sl[1]-b.y)*Math.min(1,dt/900)}
-  const ox=Math.sin(ts/1100+b.k)*4,oy=Math.sin(ts/700+b.k)*5,x=b.x+ox,y=b.y+oy;
-  ctx.globalAlpha=Math.max(0,b.a);
-  ctx.strokeStyle='rgba(60,50,40,.7)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,y+25);ctx.quadraticCurveTo(x+Math.sin(ts/500+b.k)*7,y+42,x+Math.sin(ts/600+b.k)*4,y+62);ctx.stroke();
-  ctx.fillStyle=b.col;ctx.beginPath();ctx.ellipse(x,y,22,26,0,0,7);ctx.fill();
-  ctx.beginPath();ctx.moveTo(x-5,y+30);ctx.lineTo(x+5,y+30);ctx.lineTo(x,y+23);ctx.closePath();ctx.fill();
-  ctx.drawImage(b.it.head,x-17,y-19,34,34);
-  ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.ellipse(x-12,y-15,4,7,-0.5,0,7);ctx.fill();
-  ctx.globalAlpha=1}}
+  else{b.x+=(sl[0]-b.x)*Math.min(1,dt/650);b.y+=(sl[1]-b.y)*Math.min(1,dt/900)}}
+ pxBal.slice().sort(function(a,b){return a.nv-b.nv}).forEach(function(b){
+  const x=b.x+Math.sin(ts/1100+b.k)*4,y=b.y+Math.sin(ts/700+b.k)*5;
+  ctx.globalAlpha=Math.max(0,b.a);pxBalForma(b,x,y,ts);ctx.globalAlpha=1})}
 // --- fala do pintor ---
 let pxTxt=null,pxFim=0,pxPri=0,pxIdleT=0,pxIdleI=0,pxUltCheg=0;
 const PX_IDLE=PX_PEDIR?['Comente que eu pinto a sua foto! 🎨','Uma rosa vira pintura lendária! 🌹','Um finger heart: eu pinto você no muro todo!','Quem já foi pintado vira balão no céu! 🎈','Corram atrás do meu carrinho, turma!','Bem-vindo à live! Comenta aí!']
@@ -458,6 +472,7 @@ function tocaLista(){
   audEl.src=srcMus()}
  audEl.play().catch(function(){})}
 function iniciaMusica(){
+ return;
  if(!soundOn)return;
  if(listaMus===null){fetch('musicas.json').then(function(r){return r.json()}).catch(function(){return []}).then(function(l){listaMus=Array.isArray(l)?l:[];iniciaMusica()});return}
  if(listaMus.length)tocaLista();else iniciaGerada()}
