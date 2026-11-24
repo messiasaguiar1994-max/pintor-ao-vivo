@@ -121,24 +121,34 @@ const sfx = {
 };
 addEventListener('pointerdown', () => ac());
 
-// ================== NARRADOR (voz grátis do navegador) ==================
-let vozPt = null, falaFila = [], ultimaFala = 0;
+// ================== NARRADOR (voz brasileira grátis) ==================
+// 1º tenta a voz em português que vem do servidor (/fala); se falhar, usa uma voz pt-BR do aparelho.
+// Nunca fala com voz de outro idioma.
+let vozPt = null, falaFila = [], falando = false, servidorFalaOk = !DEMO || location.protocol.startsWith('http');
 function pegaVoz() { try { const vs = speechSynthesis.getVoices(); vozPt = vs.find(v => /pt.BR/i.test(v.lang) && /google|natural|online/i.test(v.name)) || vs.find(v => /pt.BR/i.test(v.lang)) || vs.find(v => /^pt/i.test(v.lang)) || null; } catch (_) {} }
 try { pegaVoz(); speechSynthesis.onvoiceschanged = pegaVoz; } catch (_) {}
 function fala(txt, prioridade) {
-  if (!VOZ || !('speechSynthesis' in window)) return;
+  if (!VOZ) return;
   if (prioridade) { falaFila.unshift(txt); falaFila.length = Math.min(falaFila.length, 3); }
   else if (falaFila.length < 2) falaFila.push(txt);
 }
+function falaAparelho(txt) {
+  if (!vozPt) return false;
+  try { const u = new SpeechSynthesisUtterance(txt); u.lang = 'pt-BR'; u.voice = vozPt; u.rate = 1.08; u.pitch = 1.1;
+    falando = true; u.onend = u.onerror = () => { falando = false; }; speechSynthesis.speak(u); setTimeout(() => { falando = false; }, 8000); return true; } catch (_) { return false; }
+}
 function processaFala() {
-  if (!VOZ || !falaFila.length) return;
-  try {
-    if (speechSynthesis.speaking || speechSynthesis.pending) return;
-    if (performance.now() - ultimaFala < 400) return;
-    const u = new SpeechSynthesisUtterance(falaFila.shift());
-    u.lang = 'pt-BR'; if (vozPt) u.voice = vozPt; u.rate = 1.08; u.pitch = 1.1;
-    speechSynthesis.speak(u); ultimaFala = performance.now();
-  } catch (_) {}
+  if (!VOZ || falando || !falaFila.length) return;
+  const txt = falaFila.shift();
+  if (servidorFalaOk) {
+    falando = true;
+    const au = new Audio(BASE + '/fala?t=' + encodeURIComponent(txt.slice(0, 180)));
+    let acabou = false; const fim = () => { if (!acabou) { acabou = true; falando = false; } };
+    au.onended = fim;
+    au.onerror = () => { acabou = true; falando = false; servidorFalaOk = false; falaAparelho(txt); };
+    setTimeout(fim, 9000);
+    const pr = au.play(); if (pr && pr.catch) pr.catch(() => { if (!acabou) { acabou = true; falando = false; falaAparelho(txt); } });
+  } else falaAparelho(txt);
 }
 
 // ================== TEMAS (cenário muda a cada corrida) ==================

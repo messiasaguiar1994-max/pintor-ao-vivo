@@ -162,6 +162,25 @@ async function foto(res, u) {
   } catch { res.writeHead(404, CORS); res.end(); }
 }
 
+// voz brasileira grátis para o narrador da Corrida
+const falas = new Map();
+async function voz(res, txt) {
+  try {
+    txt = String(txt || '').slice(0, 180).trim(); if (!txt) throw 0;
+    let buf = falas.get(txt);
+    if (!buf) {
+      const url = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=pt-BR&q=' + encodeURIComponent(txt);
+      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://translate.google.com/' }, signal: AbortSignal.timeout(6000) });
+      if (!r.ok) throw 0;
+      buf = Buffer.from(await r.arrayBuffer());
+      if (falas.size > 200) falas.clear();
+      falas.set(txt, buf);
+    }
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'max-age=86400', ...CORS });
+    res.end(buf);
+  } catch { res.writeHead(404, CORS); res.end(); }
+}
+
 http.createServer((req, res) => {
   let u; try { u = new URL(req.url, 'http://x'); } catch { res.writeHead(400); return res.end(); }
   const r = u.pathname;
@@ -170,6 +189,7 @@ http.createServer((req, res) => {
   if (r === '/jogo' || r === '/jogo.html' || r.startsWith('/musicas')) return estatico(req, res, r === '/jogo' ? '/jogo.html' : r);
   if (r === '/corrida' || r === '/corrida.html') return estatico(req, res, '/corrida.html');
   if (r === '/avatar') return foto(res, u.searchParams.get('u') || '');
+  if (r === '/fala') return voz(res, u.searchParams.get('t'));
   if (r === '/events') {
     const usuario = (u.searchParams.get('usuario') || '').replace(/^@/, '').trim().replace(/\s+/g, '');
     if (!/^[\w.]{1,40}$/.test(usuario)) { res.writeHead(400, CORS); return res.end(); }
