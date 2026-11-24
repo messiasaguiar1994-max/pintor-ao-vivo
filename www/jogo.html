@@ -299,7 +299,7 @@ function pxHead(name,img,nv){
  return c}
 // --- corredores ---
 const pxRun={};
-function pxSlot(i){const row=i%2,col=Math.floor(i/2);return {x:288-col*28-(row?12:0),y:row?920:940,s:row?1.06:1.2}}
+function pxSlot(i,n){const row=i%2,col=Math.floor(i/2),cols=Math.max(1,Math.ceil(n/2)),sp=Math.min(66,250/cols);return {x:288-col*sp-(row?sp/2:0),y:row?880:945,s:row?1.38:1.56}}
 function pxFigura(r,ts,run,vivo){
  const s=r.s,x=r.x,fy=r.y,k=run?Math.sin(r.ph):0,hop=run?Math.abs(Math.sin(r.ph))*5*s:(vivo?Math.abs(Math.sin(ts/260+r.o))*6*s:0);
  const hip=fy-22*s-hop,sh=hip-17*s,hd=sh-17*s,sp=run?11*s*k:6*s;
@@ -314,7 +314,7 @@ function pxFigura(r,ts,run,vivo){
 function pxCorredores(ts,dt){
  const lista=(cur?[cur]:[]).concat(queue).slice(0,20),ids={};
  lista.forEach(function(it,i){
-  ids[it.id]=1;let r=pxRun[it.id];const sl=pxSlot(i);
+  ids[it.id]=1;let r=pxRun[it.id];const sl=pxSlot(i,lista.length);
   if(!r){r=pxRun[it.id]={it:it,x:-30-Math.random()*30,y:sl.y,s:sl.s,ph:Math.random()*6,o:Math.random()*6,col:'hsl('+hue(it.name)+',65%,42%)'}}
   const dx=sl.x-r.x;r.x+=dx*Math.min(1,dt/220);r.y+=(sl.y-r.y)*Math.min(1,dt/200);r.s+=(sl.s-r.s)*Math.min(1,dt/200);
   r.run=vel>25||Math.abs(dx)>8;r.ph+=dt*(0.012+Math.min(vel,110)/110*0.006);
@@ -323,7 +323,7 @@ function pxCorredores(ts,dt){
  const arr=Object.values(pxRun).sort(function(a,b){return a.y-b.y});
  arr.forEach(function(r){pxFigura(r,ts,r.run,vel<25)})}
 // --- baloes ---
-const pxBal=[],PX_SL=[[54,178],[162,170],[270,178],[378,170],[486,178],[108,262],[216,254],[324,262],[432,254],[500,300]];
+const pxBal=[],PX_SL=[[54,205],[162,195],[270,205],[378,195],[486,205],[108,285],[216,277],[324,285],[432,277],[504,285]];
 function pxSolta(it){
  const r=pxRun[it.id];const x=r?r.x:280,y=r?r.y-50:860;if(r)delete pxRun[it.id];
  const vivos=pxBal.filter(function(b){return !b.sai});
@@ -333,7 +333,7 @@ function pxSolta(it){
  pxApito();setTimeout(pxPop,820);pxBal.push({it:it,x:x,y:y,sl:sl,k:Math.random()*6,a:1,sai:false,nv:it.nivel,col:'hsl('+hue(it.name)+',70%,58%)'});
  pxFalar(it.name.slice(0,16)+' virou balão no céu! 🎈',3500,1)}
 function pxBalForma(b,x,y,ts){
- const nv=b.nv,sc=nv===5?1.65:nv===4?1.22:1;
+ const nv=b.nv,sc=nv===5?2.3:nv===4?1.8:1.5;
  ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);
  ctx.strokeStyle='rgba(60,50,40,.7)';ctx.lineWidth=1.5/sc;ctx.beginPath();ctx.moveTo(0,25);ctx.quadraticCurveTo(Math.sin(ts/500+b.k)*7,42,Math.sin(ts/600+b.k)*4,62);ctx.stroke();
  let cor=b.col;
@@ -349,7 +349,7 @@ function pxBalForma(b,x,y,ts){
  ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.ellipse(-13,-15,3.5,7,-0.5,0,7);ctx.fill();
  ctx.restore();
  if(nv>=4){ // brilhinhos girando em volta
-  const n=nv===5?6:4,R=(nv===5?56:38);
+  const n=nv===5?6:4,R=sc*34;
   for(let i=0;i<n;i++){const a=ts/700+b.k+i*6.283/n,px=x+Math.cos(a)*R,py=y+Math.sin(a)*R*0.9,tw=0.5+0.5*Math.sin(ts/180+i*2);
    ctx.fillStyle='rgba(255,240,150,'+(0.4+0.6*tw)+')';ctx.save();ctx.translate(px,py);ctx.rotate(a);const z=3+tw*3;ctx.beginPath();ctx.moveTo(0,-z*1.6);ctx.lineTo(z*.5,-z*.5);ctx.lineTo(z*1.6,0);ctx.lineTo(z*.5,z*.5);ctx.lineTo(0,z*1.6);ctx.lineTo(-z*.5,z*.5);ctx.lineTo(-z*1.6,0);ctx.lineTo(-z*.5,-z*.5);ctx.closePath();ctx.fill();ctx.restore()}}}
 function pxBaloes(ts,dt){
