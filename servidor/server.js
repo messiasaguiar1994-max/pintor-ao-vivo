@@ -2,6 +2,7 @@
 //   GET /status                 -> {ok:true}
 //   GET /events?usuario=fulano  -> fluxo (SSE) de comentarios e presentes da live de @fulano
 //   GET /avatar?u=<url>         -> foto de perfil (proxy)
+//   GET /corrida?u=fulano       -> jogo Corrida Maluca da Live (overlay)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -52,6 +53,8 @@ function sala(usuario) {
   if (s) return s;
   s = { usuario, clientes: new Set(), ultimos: new Map(), conn: null, tmr: null, fim: null, ativa: true, estado: 'conectando', msg: '' };
   s.emit = (obj) => { const m = `data: ${JSON.stringify(obj)}\n\n`; for (const c of s.clientes) c.write(m); };
+  // so para o jogo da Corrida (clientes com modo=corrida): todo comentario e as curtidas
+  s.emitCorrida = (obj) => { const m = `data: ${JSON.stringify(obj)}\n\n`; for (const c of s.clientes) if (c._corrida) c.write(m); };
   s.status = (estado, msg) => { s.estado = estado; s.msg = msg || ''; s.emit({ tipo: 'status', estado, msg: s.msg }); console.log(`[${usuario}]`, estado, msg || ''); };
   salas.set(usuario, s);
   conectar(s);
@@ -95,10 +98,20 @@ function conectar(s) {
   c.on(WebcastEvent.CHAT || 'chat', (data) => {
     const u = data.user || {};
     const nome = u.nickname || u.uniqueId || data.nickname || data.uniqueId || 'Espectador';
+    const chaveC = 'corrida|' + (u.uniqueId || nome);
+    if (Date.now() - (s.ultimos.get(chaveC) || 0) >= 800) {
+      s.ultimos.set(chaveC, Date.now());
+      s.emitCorrida({ tipo: 'chat', nome, fotos: coletarFotos(u), id: u.uniqueId || nome });
+    }
     const chave = 'chat|' + (u.uniqueId || nome);
     if (Date.now() - (s.ultimos.get(chave) || 0) < COOLDOWN_COMENTARIO) return;
     s.ultimos.set(chave, Date.now());
     s.emit({ nome, fotos: coletarFotos(u), nivel: 1, id: u.uniqueId || nome });
+  });
+  c.on(WebcastEvent.LIKE || 'like', (data) => {
+    const u = data.user || {};
+    const n = Number(data.likeCount ?? data.count ?? 1) || 1;
+    s.emitCorrida({ tipo: 'curtida', n: Math.min(n, 50), nome: u.nickname || u.uniqueId || '' });
   });
   c.on('error', (e) => console.log(`[${s.usuario}] aviso:`, (e && e.message) || e));
   c.on('disconnected', () => { if (!s.ativa) return; s.status('reconectando', 'A live caiu ou terminou. Tentando de novo...'); tentarDeNovo(8000); });
@@ -155,6 +168,7 @@ http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
   if (r === '/' || r === '/status') { res.writeHead(200, { 'Content-Type': 'application/json', ...CORS }); return res.end(JSON.stringify({ ok: true, salas: salas.size })); }
   if (r === '/jogo' || r === '/jogo.html' || r.startsWith('/musicas')) return estatico(req, res, r === '/jogo' ? '/jogo.html' : r);
+  if (r === '/corrida' || r === '/corrida.html') return estatico(req, res, '/corrida.html');
   if (r === '/avatar') return foto(res, u.searchParams.get('u') || '');
   if (r === '/events') {
     const usuario = (u.searchParams.get('usuario') || '').replace(/^@/, '').trim().replace(/\s+/g, '');
@@ -162,6 +176,7 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...CORS });
     res.write(':ok\n\n');
     const s = sala(usuario);
+    if (u.searchParams.get('modo') === 'corrida') res._corrida = true;
     clearTimeout(s.fim); s.clientes.add(res);
     const bate = setInterval(() => res.write(':bip\n\n'), 20000);
     req.on('close', () => {
