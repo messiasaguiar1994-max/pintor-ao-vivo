@@ -7,12 +7,14 @@
 <style>
 html,body{margin:0;height:100%;background:#000;overflow:hidden}
 canvas{display:block;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);touch-action:none}
+#cfg{position:fixed;right:10px;bottom:10px;width:46px;height:46px;border-radius:50%;border:0;background:#0008;color:#fff;font-size:24px;opacity:.12;transition:opacity .4s;display:none;z-index:5}
 #st{position:fixed;left:8px;bottom:8px;font:600 12px system-ui,sans-serif;color:#fff;background:#0009;padding:4px 9px;border-radius:10px;transition:opacity 1.2s;pointer-events:none}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="st"></div>
+<button id="cfg" title="Configurações">⚙</button>
 <script>
 'use strict';
 // ================== CONFIGURAÇÃO ==================
@@ -380,7 +382,7 @@ function demoChega() { const id = fakeId(); chegou(id, fakeNome(id), null); }
 function demoCurte(n) { const id = fakeId(); curtidasDe(id, fakeNome(id), null, n); }
 function demoRosa(q) { const id = fakeId(); presente(id, fakeNome(id), null, q || 1, 1); }
 if (DEMO) {
-  status('DEMONSTRAÇÃO — abra com ?u=SEU_USUARIO para ligar na live', true);
+  status(window.Capacitor ? 'DEMONSTRAÇÃO' : 'DEMONSTRAÇÃO — abra com ?u=SEU_USUARIO para ligar na live', true);
   setInterval(() => { if (Math.random() < 0.6) demoChega(); }, 2500);
   setInterval(() => { if (Math.random() < 0.5) demoComenta(); }, 2000);
   setInterval(() => demoCurte(5 + (Math.random() * 20 | 0)), 700);
@@ -395,6 +397,41 @@ if (TESTE) addEventListener('keydown', (e) => {
   if (k === 'g') demoRosa(5);
   if (k === 'v') { VOZ = !VOZ; status('Narrador ' + (VOZ ? 'ligado' : 'desligado')); try { speechSynthesis.cancel(); } catch (_) {} }
 });
+
+// ================== MÚSICAS (escolhidas na tela inicial do app) ==================
+let musicas = [], musIdx = 0, musAudio = null, musUrl = null;
+const VOLUME = (() => { try { const v = localStorage.getItem('corr_volume'); return v === null ? 0.6 : clamp(+v / 100, 0, 1); } catch (_) { return 0.6; } })();
+function tocarProxima() {
+  if (!musicas.length) return;
+  if (musUrl) URL.revokeObjectURL(musUrl);
+  const m = musicas[musIdx % musicas.length]; musIdx++;
+  musUrl = URL.createObjectURL(m.blob);
+  if (!musAudio) { musAudio = new Audio(); musAudio.onended = tocarProxima; musAudio.onerror = () => setTimeout(tocarProxima, 500); }
+  musAudio.src = musUrl; musAudio.volume = VOLUME;
+  const pr = musAudio.play(); if (pr && pr.catch) pr.catch(() => {});
+}
+try {
+  const r = indexedDB.open('corrida', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('musicas', { keyPath: 'id', autoIncrement: true });
+  r.onsuccess = () => {
+    const t = r.result.transaction('musicas').objectStore('musicas').getAll();
+    t.onsuccess = () => { musicas = (t.result || []).sort(() => Math.random() - 0.5); if (musicas.length && VOLUME > 0) tocarProxima(); };
+  };
+} catch (_) {}
+// se o aparelho bloquear o som até um toque, começa no primeiro toque
+addEventListener('pointerdown', () => { if (musAudio && musAudio.paused && musicas.length) musAudio.play().catch(() => {}); });
+// abaixa a música enquanto o narrador fala
+setInterval(() => { if (musAudio) { const alvo = falando ? VOLUME * 0.35 : VOLUME; musAudio.volume += (alvo - musAudio.volume) * 0.5; } }, 100);
+
+// ================== BOTÃO DE VOLTAR ÀS CONFIGURAÇÕES (só no app) ==================
+(() => {
+  const b = document.getElementById('cfg');
+  if (!window.Capacitor) return; // no LIVE Studio não aparece
+  b.style.display = 'block';
+  let t; const mostra = () => { b.style.opacity = 1; clearTimeout(t); t = setTimeout(() => b.style.opacity = 0.12, 4000); };
+  addEventListener('pointerdown', mostra);
+  b.onclick = () => { try { if (musAudio) musAudio.pause(); speechSynthesis.cancel(); } catch (_) {} location.href = 'index.html'; };
+})();
 
 // ================== LÓGICA ==================
 const telaX = (d) => 270 + (d - cam) * K;

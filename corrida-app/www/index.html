@@ -10,15 +10,31 @@ input{width:100%;padding:14px;border-radius:12px;border:0;font-size:18px}
 button{width:100%;margin-top:22px;padding:18px;border:0;border-radius:14px;font-size:22px;font-weight:800;background:#ffcf33;color:#2a1500}
 .pill{display:inline-block;font-size:13px;padding:3px 10px;border-radius:99px;background:#555;margin-left:6px;vertical-align:middle}.ok{background:#1a9b4a}.ruim{background:#c0392b}
 small{display:block;margin-top:14px;opacity:.7}details{margin-top:18px}summary{cursor:pointer;opacity:.8}
+.box{margin-top:20px;background:#ffffff1f;border-radius:14px;padding:14px}
+.box h2{font-size:18px;margin:0 0 8px}
+.mus{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #ffffff22;font-size:15px}
+.mus span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mus b{cursor:pointer;background:#c0392b;border-radius:8px;padding:4px 10px;font-weight:700}
+.btn2{width:100%;margin-top:10px;padding:13px;border:0;border-radius:12px;font-size:17px;font-weight:700;background:#ffffff;color:#0f4c81}
+input[type=range]{padding:0;width:100%}
 </style></head><body><div class="c">
 <h1>🏁 Corrida da Live <span id="st" class="pill">servidor ?</span></h1>
-<p>Quem comenta entra na corrida com a foto. Cada comentário é um turbo!</p>
+<p>Quem entra na live já corre com a foto. Curtidas e rosas dão turbo!</p>
 <label for="usu">Usuário do TikTok da live</label>
 <input id="usu" placeholder="@seu_usuario" autocomplete="off" autocapitalize="off" spellcheck="false">
 <button id="go">JOGAR</button>
 <label><input type="checkbox" id="voz" checked style="width:auto;margin-right:8px">Narrador falando</label>
 <small>Abra a live no TikTok (jogo de celular / tela do celular) e depois toque em JOGAR. Sem usuário, toque em DEMONSTRAÇÃO para ver o jogo funcionando.</small>
 <button id="demo" style="background:#ffffff33;color:#fff;font-size:18px;padding:14px">DEMONSTRAÇÃO</button>
+<div class="box">
+<h2>🎵 Músicas do jogo</h2>
+<div id="lista"><small>Nenhuma música ainda.</small></div>
+<input type="file" id="arq" accept="audio/*,.mp3,.m4a,.ogg,.wav" multiple hidden>
+<button class="btn2" id="addm">+ Adicionar músicas do celular</button>
+<label for="vol">Volume da música: <span id="volv"></span></label>
+<input type="range" id="vol" min="0" max="100" step="5">
+<small>As músicas ficam salvas no app e tocam uma depois da outra durante a corrida.</small>
+</div>
 <details><summary>Configurações</summary>
 <label for="srv">Endereço do servidor</label>
 <input id="srv" placeholder="https://pintor-servidor.onrender.com" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -43,5 +59,18 @@ $('go').onclick=()=>{const u=limpaU($('usu').value);if(!u){alert('Digite o usuá
  const s=limpaS($('srv').value);g.salvar('usuario',u);g.salvar('servidor',s);
  location.href='jogo.html?u='+encodeURIComponent(u)+'&s='+encodeURIComponent(s)+extra()+'#live'};
 $('demo').onclick=()=>{const s=limpaS($('srv').value);location.href='jogo.html?demo=1&s='+encodeURIComponent(s)+extra()};
+// ---------- músicas (ficam guardadas dentro do app) ----------
+function abreDB(){return new Promise((ok,erro)=>{const r=indexedDB.open('corrida',1);r.onupgradeneeded=()=>r.result.createObjectStore('musicas',{keyPath:'id',autoIncrement:true});r.onsuccess=()=>ok(r.result);r.onerror=()=>erro(r.error)})}
+async function lerMusicas(){const db=await abreDB();return new Promise(ok=>{const t=db.transaction('musicas').objectStore('musicas').getAll();t.onsuccess=()=>ok(t.result||[]);t.onerror=()=>ok([])})}
+async function salvarMusica(f){const db=await abreDB();return new Promise(ok=>{const t=db.transaction('musicas','readwrite');t.objectStore('musicas').add({nome:f.name.replace(/\.[^.]+$/,''),blob:f});t.oncomplete=ok;t.onerror=ok})}
+async function apagarMusica(id){const db=await abreDB();return new Promise(ok=>{const t=db.transaction('musicas','readwrite');t.objectStore('musicas').delete(id);t.oncomplete=ok;t.onerror=ok})}
+async function mostraMusicas(){const l=await lerMusicas();const el=$('lista');
+ if(!l.length){el.innerHTML='<small>Nenhuma música ainda.</small>';return}
+ el.innerHTML='';l.forEach(m=>{const d=document.createElement('div');d.className='mus';const n=document.createElement('span');n.textContent='♪ '+m.nome;const b=document.createElement('b');b.textContent='✕';b.onclick=async()=>{await apagarMusica(m.id);mostraMusicas()};d.append(n,b);el.append(d)})}
+$('addm').onclick=()=>$('arq').click();
+$('arq').onchange=async()=>{const fs=[...$('arq').files];$('addm').textContent='Salvando...';for(const f of fs)await salvarMusica(f);$('arq').value='';$('addm').textContent='+ Adicionar músicas do celular';mostraMusicas()};
+$('vol').value=g.ler('volume','60');$('volv').textContent=$('vol').value+'%';
+$('vol').oninput=()=>{$('volv').textContent=$('vol').value+'%';g.salvar('volume',$('vol').value)};
+mostraMusicas().catch(()=>{});
 testa();
 </script></body></html>
