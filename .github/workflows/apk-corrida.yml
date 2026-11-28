@@ -1,0 +1,59 @@
+# Monta o aplicativo da Corrida da Live (.APK), separado do Pintor ao Vivo.
+# Os dois apps podem ficar instalados juntos no celular (nomes de pacote diferentes).
+# O APK pronto fica em Releases, com o nome corrida-da-live.apk
+name: Montar APK Corrida
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'servidor/site/corrida.html'
+      - 'corrida-app/**'
+      - '.github/workflows/apk-corrida.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Trocar o Pintor pela Corrida
+        run: |
+          rm -rf www && mkdir www
+          cp corrida-app/www/index.html www/index.html
+          cp servidor/site/corrida.html www/jogo.html
+          sed -i 's/"appId": *"[^"]*"/"appId": "com.corrida.dalive"/; s/"appName": *"[^"]*"/"appName": "Corrida da Live"/' capacitor.config.json
+          sed -i 's/applicationId "com.pintor.aovivo"/applicationId "com.corrida.dalive"/' android/app/build.gradle
+          cp -r corrida-app/res/. android/app/src/main/res/
+          cat capacitor.config.json
+          grep applicationId android/app/build.gradle
+      - name: Copiar o jogo para o projeto Android
+        run: npx cap sync android
+      - name: Montar o APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease -PversionCode=${{ github.run_number }} --no-daemon
+      - name: Renomear
+        run: cp android/app/build/outputs/apk/release/app-release.apk corrida-da-live.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corrida-da-live-apk
+          path: corrida-da-live.apk
+      - name: Publicar em Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: corrida-v1.${{ github.run_number }}
+          name: Corrida da Live v1.${{ github.run_number }}
+          body: "Baixe o arquivo corrida-da-live.apk abaixo e instale no celular."
+          files: corrida-da-live.apk
+          make_latest: false

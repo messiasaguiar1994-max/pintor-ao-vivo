@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Corrida da Live</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(#0f4c81,#4fb8ff);color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}
+.c{width:100%;max-width:420px}h1{font-size:28px;margin:0 0 6px}p{opacity:.8;margin:0 0 18px}
+label{display:block;margin:14px 0 6px;font-weight:600}
+input{width:100%;padding:14px;border-radius:12px;border:0;font-size:18px}
+button{width:100%;margin-top:22px;padding:18px;border:0;border-radius:14px;font-size:22px;font-weight:800;background:#ffcf33;color:#2a1500}
+.pill{display:inline-block;font-size:13px;padding:3px 10px;border-radius:99px;background:#555;margin-left:6px;vertical-align:middle}.ok{background:#1a9b4a}.ruim{background:#c0392b}
+small{display:block;margin-top:14px;opacity:.7}details{margin-top:18px}summary{cursor:pointer;opacity:.8}
+</style></head><body><div class="c">
+<h1>🏁 Corrida da Live <span id="st" class="pill">servidor ?</span></h1>
+<p>Quem comenta entra na corrida com a foto. Cada comentário é um turbo!</p>
+<label for="usu">Usuário do TikTok da live</label>
+<input id="usu" placeholder="@seu_usuario" autocomplete="off" autocapitalize="off" spellcheck="false">
+<button id="go">JOGAR</button>
+<label><input type="checkbox" id="voz" checked style="width:auto;margin-right:8px">Narrador falando</label>
+<small>Abra a live no TikTok (jogo de celular / tela do celular) e depois toque em JOGAR. Sem usuário, toque em DEMONSTRAÇÃO para ver o jogo funcionando.</small>
+<button id="demo" style="background:#ffffff33;color:#fff;font-size:18px;padding:14px">DEMONSTRAÇÃO</button>
+<details><summary>Configurações</summary>
+<label for="srv">Endereço do servidor</label>
+<input id="srv" placeholder="https://pintor-servidor.onrender.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+</details></div>
+<script>
+// Troque o endereco abaixo pelo do seu servidor no Render (ou mude dentro do app, em Configuracoes).
+const SERVIDOR_PADRAO='https://pintor-servidor.onrender.com';
+const g={ler:(k,p)=>{try{const v=localStorage.getItem('corr_'+k);return v===null?p:v}catch(e){return p}},salvar:(k,v)=>{try{localStorage.setItem('corr_'+k,v)}catch(e){}}};
+const $=id=>document.getElementById(id);
+const limpaU=u=>String(u||'').trim().replace(/^@/,'').replace(/\s+/g,'');
+const limpaS=u=>String(u||'').trim().replace(/\/+$/,'');
+$('srv').value=limpaS(g.ler('servidor',SERVIDOR_PADRAO));
+$('usu').value=g.ler('usuario','')?'@'+g.ler('usuario',''):'';
+async function testa(){const p=$('st');p.className='pill';p.textContent='acordando servidor...';
+ for(let i=0;i<8;i++){try{const c=new AbortController(),t=setTimeout(()=>c.abort(),9000);const r=await fetch(limpaS($('srv').value)+'/status',{signal:c.signal,cache:'no-store'});clearTimeout(t);const j=await r.json();if(j.ok){p.className='pill ok';p.textContent='servidor ok';return true}}catch(e){}
+  await new Promise(r=>setTimeout(r,4000))}
+ p.className='pill ruim';p.textContent='servidor fora do ar';return false}
+$('srv').onchange=()=>{g.salvar('servidor',limpaS($('srv').value));testa()};
+$('voz').checked=g.ler('voz','1')==='1';$('voz').onchange=()=>g.salvar('voz',$('voz').checked?'1':'0');
+const extra=()=>($('voz').checked?'':'&voz=0');
+$('go').onclick=()=>{const u=limpaU($('usu').value);if(!u){alert('Digite o usuário do TikTok da live');return}
+ const s=limpaS($('srv').value);g.salvar('usuario',u);g.salvar('servidor',s);
+ location.href='jogo.html?u='+encodeURIComponent(u)+'&s='+encodeURIComponent(s)+extra()+'#live'};
+$('demo').onclick=()=>{const s=limpaS($('srv').value);location.href='jogo.html?demo=1&s='+encodeURIComponent(s)+extra()};
+testa();
+</script></body></html>
