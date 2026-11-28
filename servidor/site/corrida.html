@@ -35,7 +35,7 @@ const laneY = (i) => 604 + i * 38;
 const L = 520;               // tamanho da corrida (metros)
 const K = 5;                 // pixels por metro na tela
 const MAX_TORCIDA = 16;
-const INATIVO = 4 * 60000;   // sai da pista depois de 4 min sem comentar
+const INATIVO = 30000;       // sai do jogo quem fica 30 s sem interagir (o TikTok não avisa quem saiu da live)
 
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let esc = 1;
@@ -265,13 +265,15 @@ function npc(lane, d) {
 function laneLivre() { const ocup = new Set(corredores.map(c => c.lane)); const ordem = [3, 4, 2, 5, 1, 6, 0, 7]; return ordem.find(l => !ocup.has(l)); }
 function montarLargada() {
   const agora = performance.now();
-  let humanos = corredores.filter(c => !c.npc && agora - c.ult < INATIVO).sort((a, b) => b.ult - a.ult).map(c => c.p);
-  while (humanos.length < LANES && torcida.length) humanos.push(torcida.shift().p);
+  // turbo que sobrou (rosas/curtidas) vai junto para a próxima corrida
+  corredores.forEach(c => { if (!c.npc && c.bst > 1) c.p.pend = (c.p.pend || 0) + c.bst; });
+  let humanos = corredores.filter(c => !c.npc && agora - c.ult < INATIVO).sort((a, b) => b.ult - a.ult).map(c => ({ p: c.p, ult: c.ult }));
+  while (humanos.length < LANES && torcida.length) { const t = torcida.shift(); humanos.push({ p: t.p, ult: t.ult }); }
   humanos = humanos.slice(0, LANES);
   corredores = [];
-  humanos.forEach((p) => { const c = novoCorredor(p, laneLivre(), 0); corredores.push(c); });
+  humanos.forEach((h) => { const c = novoCorredor(h.p, laneLivre(), 0); c.ult = h.ult; corredores.push(c); });
   while (corredores.length < 3) corredores.push(npc(laneLivre(), 0));
-  corredores.forEach(c => { c.d = -Math.random() * 2; c.fin = 0; c.bst = 0; c.entra = 1; });
+  corredores.forEach(c => { c.d = -Math.random() * 2; c.fin = 0; c.bst = c.p.pend || 0; c.p.pend = 0; c.entra = 1; });
   obst = []; lugar = 1; primeiroFim = 0; cam = 0; proxObst = 7; podio = [];
 }
 
@@ -284,7 +286,7 @@ function montarLargada() {
 const SPRINT = 5;          // velocidade extra de 1 sprint
 const ROSA = 3 * SPRINT;   // 1 rosa = 3x o sprint
 const CURTIDAS_SPRINT = 50;
-const TURBO_MAX = 60;
+const VEL_MAX_TURBO = 40;  // velocidade extra máxima; o turbo que sobra vira mais tempo nessa velocidade (sem limite)
 const ultimoTurbo = new Map();
 const curtidasPessoa = new Map();
 
@@ -298,14 +300,14 @@ function entrar(p, ativo) {
     let lane = laneLivre();
     if (lane === undefined) { const b = corredores.find(c => c.npc); if (b) { lane = b.lane; poeira(telaX(b.d), laneY(b.lane), 14, '#fff'); corredores.splice(corredores.indexOf(b), 1); } }
     // quem está interagindo toma o lugar de quem está parado há mais de 1 minuto
-    if (lane === undefined && ativo) {
-      const parado = corredores.filter(c => !c.fin && agora - c.ult > 60000).sort((a, b) => a.ult - b.ult)[0];
-      if (parado) { lane = parado.lane; corredores.splice(corredores.indexOf(parado), 1); if (torcida.length < 40) torcida.push({ p: parado.p, pulo: 1, ult: parado.ult }); }
+    if (lane === undefined) {
+      const parado = corredores.filter(c => !c.npc && agora - c.ult > INATIVO).sort((a, b) => a.ult - b.ult)[0];
+      if (parado) { lane = parado.lane; poeira(telaX(parado.d), laneY(parado.lane), 14, '#fff'); corredores.splice(corredores.indexOf(parado), 1); }
     }
     if (lane !== undefined) {
       if (ti >= 0) torcida.splice(ti, 1);
       c = novoCorredor(p, lane, fase === 'contagem' ? 0 : Math.max(0, cam - 45));
-      if (!ativo) c.ult = agora - 30000;
+      if (p.pend) { c.bst = p.pend; p.pend = 0; }
       corredores.push(c); sfx.entra(); poeira(telaX(c.d), laneY(lane), 16, p.cor);
       fala(nomeFala(p.nome) + ' entrou na corrida!');
       return c;
@@ -329,6 +331,7 @@ function curtidasDe(id, nome, fotos, n) {
   while (tot >= CURTIDAS_SPRINT) { tot -= CURTIDAS_SPRINT; sprints++; }
   curtidasPessoa.set(id, tot);
   const c = entrar(p, true);
+  if (!c && sprints) p.pend = (p.pend || 0) + SPRINT * sprints;
   if (c && sprints) { turbo(c, SPRINT * sprints); if (Math.random() < 0.35) fala(nomeFala(p.nome) + ' deu um sprint!'); }
 }
 // Presente: cada rosa = 3 sprints. Outros presentes valem uma rosa por diamante.
@@ -337,6 +340,7 @@ function presente(id, nome, fotos, qtd, diamantes) {
   const rosas = Math.max(1, (qtd || 1) * Math.max(1, diamantes || 1));
   const c = entrar(p, true);
   if (c) { c.coroa = c.coroa || 0.01; c.rosas = (c.rosas || 0) + rosas; turbo(c, ROSA * rosas, true); }
+  else p.pend = (p.pend || 0) + ROSA * rosas;
   if (momentos.length < 6 && !momentos.some(m => m.p === p)) momentos.push({ p, t: 0 });
 }
 function curtidas(n) {
@@ -346,7 +350,7 @@ function curtidas(n) {
   torcida.forEach(t => { if (Math.random() < 0.5) t.pulo = 1; });
 }
 function turbo(c, forca, rosa) {
-  c.bst = Math.min(c.bst + forca, TURBO_MAX); sfx.turbo();
+  c.bst = c.bst + forca; sfx.turbo();
   const n = rosa ? 24 : 8;
   for (let i = 0; i < n; i++) parts.push({ tp: 'faisca', x: telaX(c.d) - 10, y: laneY(c.lane) - 30, vx: -80 - Math.random() * 160, vy: (Math.random() - 0.5) * 90, vida: rosa ? 0.9 : 0.5, max: rosa ? 0.9 : 0.5, cor: rosa ? ['#ff2e63', '#ff8fab', '#fff'][i % 3] : ['#ffd166', '#fff', c.p.cor][i % 3], s: 3 + Math.random() * 3 });
 }
@@ -433,6 +437,21 @@ setInterval(() => { if (musAudio) { const alvo = falando ? VOLUME * 0.35 : VOLUM
   b.onclick = () => { try { if (musAudio) musAudio.pause(); speechSynthesis.cancel(); } catch (_) {} location.href = 'index.html'; };
 })();
 
+// ================== LIMPEZA: quem saiu da live (30 s sem interagir) ==================
+setInterval(() => {
+  const agora = performance.now();
+  torcida = torcida.filter(t => agora - t.ult <= INATIVO);
+  if (fase === 'podio') return;
+  for (const c of corredores.slice()) {
+    if (c.npc || agora - c.ult <= INATIVO) continue;
+    poeira(telaX(c.d), laneY(c.lane), 14, '#fff');
+    corredores.splice(corredores.indexOf(c), 1);
+    const t = torcida.shift();
+    if (t) { const nc = novoCorredor(t.p, c.lane, fase === 'contagem' ? 0 : Math.max(0, cam - 45)); nc.ult = t.ult; if (t.p.pend) { nc.bst = t.p.pend; t.p.pend = 0; } corredores.push(nc); sfx.entra(); fala(nomeFala(t.p.nome) + ' entrou na corrida!'); }
+  }
+  while (corredores.length < 3) { const l = laneLivre(); if (l === undefined) break; corredores.push(npc(l, fase === 'contagem' ? 0 : Math.max(0, cam - 45))); }
+}, 1000);
+
 // ================== LÓGICA ==================
 const telaX = (d) => 270 + (d - cam) * K;
 function atualizar(dt) {
@@ -454,12 +473,12 @@ function atualizar(dt) {
 
   for (const c of corredores) {
     c.entra = Math.max(0, c.entra - dt * 2);
-    c.bst *= Math.exp(-dt * 1.1);
+    if (c.bst > VEL_MAX_TURBO) c.bst -= 12 * dt; else c.bst *= Math.exp(-dt * 1.1);
     c.pulo = Math.max(0, c.pulo - dt * 1.8);
     c.giro = Math.max(0, c.giro - dt);
     c.coroa = c.coroa ? Math.min(1, c.coroa + dt) : 0;
     if (correndo) {
-      let v = 7.2 + Math.sin(tempo * 0.7 + c.ph) * c.wob + (media - c.d) * 0.06 + vento * 0.5 + c.bst;
+      let v = 7.2 + Math.sin(tempo * 0.7 + c.ph) * c.wob + (media - c.d) * (c.d > media ? 0.015 : 0.06) + vento * 0.5 + Math.min(c.bst, VEL_MAX_TURBO);
       if (c.npc) v -= 0.5;
       if (c.giro > 0) v *= 0.35;
       if (fase === 'podio') v = 7;
