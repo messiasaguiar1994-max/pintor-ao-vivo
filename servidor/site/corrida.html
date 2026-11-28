@@ -17,7 +17,7 @@ canvas{display:block;position:absolute;left:50%;top:50%;transform:translate(-50%
 'use strict';
 // ================== CONFIGURAÇÃO ==================
 // Endereço: .../corrida?u=SEU_USUARIO   (sem ?u= abre a demonstração)
-// Opções:  &voz=0 (sem narrador)  &som=0 (sem efeitos)  &cam=1 (moldura para a sua câmera)  &teste=1 (teclas C, L, G)
+// Opções:  &voz=0 (sem narrador)  &som=0 (sem efeitos)  &cam=1 (moldura para a sua câmera)  &teste=1 (teclas E, C, L, R, G)
 const Q = new URLSearchParams(location.search);
 const BASE = (Q.get('s') || location.origin).replace(/\/+$/, '');
 const USR = (Q.get('u') || '').replace(/^@/, '').trim();
@@ -274,30 +274,68 @@ function montarLargada() {
 }
 
 // ================== EVENTOS DA LIVE ==================
+// Regras:
+//  - quem entra na live já entra na corrida (ou na arquibancada, se a pista estiver cheia)
+//  - comentário = turbo pequeno
+//  - cada 50 curtidas da pessoa = 1 sprint
+//  - cada rosa = 3 sprints de uma vez (quanto mais rosas, mais veloz)
+const SPRINT = 5;          // velocidade extra de 1 sprint
+const ROSA = 3 * SPRINT;   // 1 rosa = 3x o sprint
+const CURTIDAS_SPRINT = 50;
+const TURBO_MAX = 60;
 const ultimoTurbo = new Map();
-function comentario(id, nome, fotos) {
-  const p = pessoa(id, nome, fotos);
+const curtidasPessoa = new Map();
+
+// Garante a pessoa na pista; se não couber, vai para a arquibancada. Devolve o corredor (ou null).
+function entrar(p, ativo) {
   const agora = performance.now();
-  let c = corredores.find(c => c.p.id === id);
-  if (c) {
-    c.ult = agora;
-    if (agora - (ultimoTurbo.get(id) || 0) > 900) { ultimoTurbo.set(id, agora); turbo(c, 5); }
-    return;
-  }
-  const t = torcida.find(t => t.p.id === id);
-  if (t) { t.pulo = 1; t.ult = agora; return; }
-  // entra direto na pista se tiver raia livre ou um bichinho para dar lugar
+  let c = corredores.find(c => c.p.id === p.id);
+  if (c) { if (ativo) c.ult = agora; return c; }
+  const ti = torcida.findIndex(t => t.p.id === p.id);
   if (fase !== 'podio') {
     let lane = laneLivre();
     if (lane === undefined) { const b = corredores.find(c => c.npc); if (b) { lane = b.lane; poeira(telaX(b.d), laneY(b.lane), 14, '#fff'); corredores.splice(corredores.indexOf(b), 1); } }
+    // quem está interagindo toma o lugar de quem está parado há mais de 1 minuto
+    if (lane === undefined && ativo) {
+      const parado = corredores.filter(c => !c.fin && agora - c.ult > 60000).sort((a, b) => a.ult - b.ult)[0];
+      if (parado) { lane = parado.lane; corredores.splice(corredores.indexOf(parado), 1); if (torcida.length < 40) torcida.push({ p: parado.p, pulo: 1, ult: parado.ult }); }
+    }
     if (lane !== undefined) {
-      const nc = novoCorredor(p, lane, fase === 'contagem' ? 0 : Math.max(0, cam - 45));
-      corredores.push(nc); sfx.entra(); poeira(telaX(nc.d), laneY(lane), 16, p.cor);
+      if (ti >= 0) torcida.splice(ti, 1);
+      c = novoCorredor(p, lane, fase === 'contagem' ? 0 : Math.max(0, cam - 45));
+      if (!ativo) c.ult = agora - 30000;
+      corredores.push(c); sfx.entra(); poeira(telaX(c.d), laneY(lane), 16, p.cor);
       fala(nomeFala(p.nome) + ' entrou na corrida!');
-      return;
+      return c;
     }
   }
-  if (torcida.length < 40) { torcida.push({ p, pulo: 1, ult: agora }); sfx.entra(); fala(nomeFala(p.nome) + ' chegou na torcida!'); }
+  if (ti >= 0) { torcida[ti].pulo = 1; if (ativo) torcida[ti].ult = agora; }
+  else if (torcida.length < 40) { torcida.push({ p, pulo: 1, ult: agora }); sfx.entra(); }
+  return null;
+}
+function chegou(id, nome, fotos) { entrar(pessoa(id, nome, fotos), false); }
+function comentario(id, nome, fotos) {
+  const c = entrar(pessoa(id, nome, fotos), true);
+  const agora = performance.now();
+  if (c && agora - (ultimoTurbo.get(id) || 0) > 900) { ultimoTurbo.set(id, agora); turbo(c, 3); }
+}
+function curtidasDe(id, nome, fotos, n) {
+  curtidas(n);
+  if (!id) return;
+  const p = pessoa(id, nome, fotos);
+  let tot = (curtidasPessoa.get(id) || 0) + n, sprints = 0;
+  while (tot >= CURTIDAS_SPRINT) { tot -= CURTIDAS_SPRINT; sprints++; }
+  curtidasPessoa.set(id, tot);
+  const c = entrar(p, true);
+  if (c && sprints) { turbo(c, SPRINT * sprints); if (Math.random() < 0.35) fala(nomeFala(p.nome) + ' deu um sprint!'); }
+}
+// Presente: cada rosa = 3 sprints. Outros presentes valem uma rosa por diamante.
+function presente(id, nome, fotos, qtd, diamantes) {
+  const p = pessoa(id, nome, fotos);
+  const rosas = Math.max(1, (qtd || 1) * Math.max(1, diamantes || 1));
+  const c = entrar(p, true);
+  if (c) { c.coroa = c.coroa || 0.01; c.rosas = (c.rosas || 0) + rosas; turbo(c, ROSA * rosas, true); }
+  if (momentos.length < 6 && !momentos.some(m => m.p === p)) momentos.push({ p, t: 0 });
 }
 function curtidas(n) {
   vento = Math.min(3, vento + 0.15 * Math.min(n, 15));
@@ -305,15 +343,10 @@ function curtidas(n) {
   for (let i = 0; i < k; i++) parts.push({ tp: 'coracao', x: 470 + Math.random() * 50, y: 930, vx: -20 - Math.random() * 40, vy: -120 - Math.random() * 120, vida: 2.2, max: 2.2, cor: ['#ff4d6d', '#ff8fab', '#ffd166', '#ff5ec4'][i % 4], s: 10 + Math.random() * 8 });
   torcida.forEach(t => { if (Math.random() < 0.5) t.pulo = 1; });
 }
-// Presente = só um agradecimento bonito (sem vantagem na corrida e sem texto pedindo presente)
-function presente(id, nome, fotos) {
-  const p = pessoa(id, nome, fotos);
-  const c = corredores.find(c => c.p.id === id); if (c) c.coroa = 1;
-  if (momentos.length < 6) momentos.push({ p, t: 0 });
-}
-function turbo(c, forca) {
-  c.bst = Math.min(c.bst + forca, 10); sfx.turbo();
-  for (let i = 0; i < 8; i++) parts.push({ tp: 'faisca', x: telaX(c.d) - 10, y: laneY(c.lane) - 30, vx: -80 - Math.random() * 120, vy: (Math.random() - 0.5) * 80, vida: 0.5, max: 0.5, cor: ['#ffd166', '#fff', c.p.cor][i % 3], s: 3 + Math.random() * 3 });
+function turbo(c, forca, rosa) {
+  c.bst = Math.min(c.bst + forca, TURBO_MAX); sfx.turbo();
+  const n = rosa ? 24 : 8;
+  for (let i = 0; i < n; i++) parts.push({ tp: 'faisca', x: telaX(c.d) - 10, y: laneY(c.lane) - 30, vx: -80 - Math.random() * 160, vy: (Math.random() - 0.5) * 90, vida: rosa ? 0.9 : 0.5, max: rosa ? 0.9 : 0.5, cor: rosa ? ['#ff2e63', '#ff8fab', '#fff'][i % 3] : ['#ffd166', '#fff', c.p.cor][i % 3], s: 3 + Math.random() * 3 });
 }
 function poeira(x, y, n, cor) { for (let i = 0; i < n; i++) parts.push({ tp: 'po', x, y, vx: (Math.random() - 0.5) * 120, vy: -Math.random() * 90, vida: 0.7, max: 0.7, cor: cor || '#fff', s: 4 + Math.random() * 5 }); }
 
@@ -330,8 +363,9 @@ function conectar() {
     if (d.tipo === 'status') { status(d.msg || d.estado, d.estado !== 'conectado'); return; }
     const id = String(d.id || d.nome || 'x');
     if (d.tipo === 'chat') comentario(id, d.nome, d.fotos);
-    else if (d.tipo === 'curtida') curtidas(+d.n || 1);
-    else if (!d.tipo && (d.nivel || 0) >= 4) presente(id, d.nome, d.fotos);
+    else if (d.tipo === 'chegou') chegou(id, d.nome, d.fotos);
+    else if (d.tipo === 'curtida') curtidasDe(d.id ? id : '', d.nome, d.fotos, +d.n || 1);
+    else if (d.tipo === 'presente') presente(id, d.nome, d.fotos, +d.qtd || 1, +d.diamantes || 1);
   };
   es.onerror = () => status('Sem conexão com o servidor... tentando de novo', true);
 }
@@ -342,17 +376,23 @@ const NOMES = ['Bia', 'Joao_123', 'Carla', 'Pedrinho', 'Ana.luz', 'Marcos', 'Juj
 function fakeId() { return 'demo' + ((Math.random() * NOMES.length) | 0); }
 function fakeNome(id) { return NOMES[+id.slice(4)]; }
 function demoComenta() { const id = fakeId(); comentario(id, fakeNome(id), null); }
+function demoChega() { const id = fakeId(); chegou(id, fakeNome(id), null); }
+function demoCurte(n) { const id = fakeId(); curtidasDe(id, fakeNome(id), null, n); }
+function demoRosa(q) { const id = fakeId(); presente(id, fakeNome(id), null, q || 1, 1); }
 if (DEMO) {
   status('DEMONSTRAÇÃO — abra com ?u=SEU_USUARIO para ligar na live', true);
-  setInterval(() => { if (Math.random() < 0.8) demoComenta(); }, 1300);
-  setInterval(() => curtidas(1 + (Math.random() * 8 | 0)), 2600);
-  setInterval(() => { const id = fakeId(); presente(id, fakeNome(id), null); }, 23000);
+  setInterval(() => { if (Math.random() < 0.6) demoChega(); }, 2500);
+  setInterval(() => { if (Math.random() < 0.5) demoComenta(); }, 2000);
+  setInterval(() => demoCurte(5 + (Math.random() * 20 | 0)), 700);
+  setInterval(() => demoRosa(Math.random() < 0.3 ? 3 : 1), 11000);
 }
 if (TESTE) addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
+  if (k === 'e') demoChega();
   if (k === 'c') demoComenta();
-  if (k === 'l') curtidas(10);
-  if (k === 'g') { const id = fakeId(); presente(id, fakeNome(id), null); }
+  if (k === 'l') demoCurte(50);
+  if (k === 'r') demoRosa(1);
+  if (k === 'g') demoRosa(5);
   if (k === 'v') { VOZ = !VOZ; status('Narrador ' + (VOZ ? 'ligado' : 'desligado')); try { speechSynthesis.cancel(); } catch (_) {} }
 });
 
@@ -562,7 +602,7 @@ function desenharCorredor(c) {
   if (c.coroa) { ctx.save(); ctx.translate(hx, hy - r - 2 * s); ctx.scale(c.coroa, c.coroa); ctx.fillStyle = '#ffd60a'; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-13 * s, 0); ctx.lineTo(-13 * s, -12 * s); ctx.lineTo(-6 * s, -5 * s); ctx.lineTo(0, -15 * s); ctx.lineTo(6 * s, -5 * s); ctx.lineTo(13 * s, -12 * s); ctx.lineTo(13 * s, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
   ctx.restore();
   // linhas de velocidade
-  if (c.bst > 2) { ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; for (let k = 0; k < 3; k++) { const yy = y - 20 * s - k * 14 * s, l = 16 + c.bst * 3; ctx.beginPath(); ctx.moveTo(x - 22 * s - l, yy); ctx.lineTo(x - 20 * s, yy); ctx.stroke(); } }
+  if (c.bst > 2) { ctx.strokeStyle = c.bst > 12 ? 'rgba(255,90,140,.85)' : 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; for (let k = 0; k < 3; k++) { const yy = y - 20 * s - k * 14 * s, l = Math.min(110, 16 + c.bst * 3); ctx.beginPath(); ctx.moveTo(x - 22 * s - l, yy); ctx.lineTo(x - 20 * s, yy); ctx.stroke(); } }
   // nome
   const nome = c.p.nome + (vitorias.get(c.p.id) ? ' ★' + vitorias.get(c.p.id) : '');
   ctx.font = `bold ${12}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

@@ -51,7 +51,7 @@ function coletarFotos(u) {
 function sala(usuario) {
   let s = salas.get(usuario);
   if (s) return s;
-  s = { usuario, clientes: new Set(), ultimos: new Map(), conn: null, tmr: null, fim: null, ativa: true, estado: 'conectando', msg: '' };
+  s = { usuario, clientes: new Set(), ultimos: new Map(), streaks: new Map(), conn: null, tmr: null, fim: null, ativa: true, estado: 'conectando', msg: '' };
   s.emit = (obj) => { const m = `data: ${JSON.stringify(obj)}\n\n`; for (const c of s.clientes) c.write(m); };
   // so para o jogo da Corrida (clientes com modo=corrida): todo comentario e as curtidas
   s.emitCorrida = (obj) => { const m = `data: ${JSON.stringify(obj)}\n\n`; for (const c of s.clientes) if (c._corrida) c.write(m); };
@@ -89,6 +89,14 @@ function conectar(s) {
     if (lista.has(idP) || (unit != null && unit >= LIMITE_GIGANTE)) nivel = 5;
     else if (idP === '5655') nivel = 4;
     else nivel = (unit == null && lista.size === 0) ? 5 : 4;
+    // Corrida: conta quantos presentes chegaram (inclusive em sequencia/combo)
+    const uid = u.uniqueId || nome, kS = 'g|' + uid + '|' + idP;
+    const rc = Number(data.repeatCount) || 1;
+    const streak = (data.giftType ?? data.giftDetails?.giftType) === 1;
+    let qtd;
+    if (streak) { const visto = s.streaks.get(kS) || 0; qtd = rc > visto ? rc - visto : (rc < visto ? rc : 0); s.streaks.set(kS, rc); if (data.repeatEnd) s.streaks.delete(kS); }
+    else qtd = rc;
+    if (qtd > 0) s.emitCorrida({ tipo: 'presente', id: uid, nome, fotos, qtd: Math.min(qtd, 500), diamantes: unit ?? 1, rosa: idP === '5655' });
     const chave = nome + '|' + idP;
     if (Date.now() - (s.ultimos.get(chave) || 0) < 4000) return; // evita repeticao do mesmo presente
     s.ultimos.set(chave, Date.now());
@@ -111,7 +119,17 @@ function conectar(s) {
   c.on(WebcastEvent.LIKE || 'like', (data) => {
     const u = data.user || {};
     const n = Number(data.likeCount ?? data.count ?? 1) || 1;
-    s.emitCorrida({ tipo: 'curtida', n: Math.min(n, 50), nome: u.nickname || u.uniqueId || '' });
+    const nome = u.nickname || u.uniqueId || 'Espectador';
+    s.emitCorrida({ tipo: 'curtida', n: Math.min(n, 200), nome, id: u.uniqueId || nome, fotos: coletarFotos(u) });
+  });
+  c.on(WebcastEvent.MEMBER || 'member', (data) => {
+    const u = data.user || {};
+    const nome = u.nickname || u.uniqueId || data.nickname || data.uniqueId;
+    if (!nome) return;
+    const chave = 'chegou|' + (u.uniqueId || nome);
+    if (Date.now() - (s.ultimos.get(chave) || 0) < 60000) return;
+    s.ultimos.set(chave, Date.now());
+    s.emitCorrida({ tipo: 'chegou', nome, fotos: coletarFotos(u), id: u.uniqueId || nome });
   });
   c.on('error', (e) => console.log(`[${s.usuario}] aviso:`, (e && e.message) || e));
   c.on('disconnected', () => { if (!s.ativa) return; s.status('reconectando', 'A live caiu ou terminou. Tentando de novo...'); tentarDeNovo(8000); });
